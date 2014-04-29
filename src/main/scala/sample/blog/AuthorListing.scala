@@ -17,7 +17,6 @@ object AuthorListing {
   case class PostSummary(author: String, postId: String, title: String)
 
   case class GetPosts(author: String)
-
   case class Posts(list: immutable.IndexedSeq[PostSummary])
 
   val idExtractor: ShardRegion.IdExtractor = {
