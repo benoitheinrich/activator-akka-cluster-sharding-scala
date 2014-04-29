@@ -8,8 +8,7 @@ import akka.actor.Props
 import akka.actor.ReceiveTimeout
 import akka.contrib.pattern.ShardRegion
 import akka.contrib.pattern.ShardRegion.Passivate
-import akka.persistence.EventsourcedProcessor
-import akka.persistence.Persistent
+import akka.persistence.{Deliver, Channel, EventsourcedProcessor, Persistent}
 
 object Post {
 
@@ -17,9 +16,9 @@ object Post {
     Props(new Post(authorListing))
 
   object PostContent {
-    val empty = PostContent("", "", "")
+    val empty = PostContent(List.empty, "", "")
   }
-  case class PostContent(author: String, title: String, body: String)
+  case class PostContent(author: List[String], title: String, body: String)
 
   sealed trait Command {
     def postId: String
@@ -38,7 +37,7 @@ object Post {
     case cmd: Command => (cmd.postId, cmd)
   }
 
-  val shardResolver: ShardRegion.ShardResolver = msg => msg match {
+  val shardResolver: ShardRegion.ShardResolver = {
     case cmd: Command => (math.abs(cmd.postId.hashCode) % 100).toString
   }
 
@@ -61,7 +60,8 @@ class Post(authorListing: ActorRef) extends EventsourcedProcessor with ActorLogg
   // passivate the entity when no activity
   context.setReceiveTimeout(2.minutes)
 
-  private var state = State(PostContent.empty, false)
+  private var state = State(PostContent.empty, published = false)
+  private val authorListingChannel = context.actorOf(Channel.props())
 
   override def receiveRecover: Receive = {
     case evt: Event => state = state.updated(evt)
@@ -71,7 +71,7 @@ class Post(authorListing: ActorRef) extends EventsourcedProcessor with ActorLogg
     case cmd: Command => cmd match {
       case GetContent(_) => sender() ! state.content
       case AddPost(_, content) =>
-        if (state.content == PostContent.empty && content.author != "" && content.title != "")
+        if (state.content == PostContent.empty && !content.author.isEmpty && content.title != "")
           persist(PostAdded(content)) { evt =>
             state = state.updated(evt)
             log.info("New post saved: {}", state.content.title)
@@ -88,7 +88,9 @@ class Post(authorListing: ActorRef) extends EventsourcedProcessor with ActorLogg
             state = state.updated(evt)
             val c = state.content
             log.info("Post published: {}", c.title)
-            authorListing ! Persistent(AuthorListing.PostSummary(c.author, postId, c.title))
+            for (author <- c.author) {
+              authorListingChannel ! Deliver(Persistent(AuthorListing.PostSummary(author, postId, c.title)), authorListing.path)
+            }
           }
     }
     case ReceiveTimeout => context.parent ! Passivate(stopMessage = PoisonPill)

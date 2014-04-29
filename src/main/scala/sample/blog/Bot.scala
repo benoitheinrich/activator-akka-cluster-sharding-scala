@@ -37,7 +37,7 @@ class Bot extends Actor with ActorLogging {
       val postId = UUID.randomUUID().toString
       n += 1
       val title = s"Post $n from $from"
-      postRegion ! Post.AddPost(postId, Post.PostContent(currentAuthor, title, "..."))
+      postRegion ! Post.AddPost(postId, Post.PostContent(List(currentAuthor), title, "..."))
       context.become(edit(postId))
   }
 

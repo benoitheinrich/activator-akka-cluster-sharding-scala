@@ -1,7 +1,7 @@
 import com.typesafe.sbt.SbtMultiJvm
 import com.typesafe.sbt.SbtMultiJvm.MultiJvmKeys.MultiJvm
 
-val akkaVersion = "2.3.1"
+val akkaVersion = "2.3.2"
 
 val project = Project(
   id = "akka-cluster-sharding-scala",
@@ -10,9 +10,14 @@ val project = Project(
     name := """akka-cluster-sharding-scala""",
     version := "1.0",
     scalaVersion := "2.10.3",
+    resolvers += "krasserm at bintray" at "http://dl.bintray.com/krasserm/maven",
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-contrib" % akkaVersion,
       "com.typesafe.akka" %% "akka-multi-node-testkit" % akkaVersion,
+      "com.github.krasserm" %% "akka-persistence-cassandra" % "0.2",
+      "ch.qos.logback" % "logback-classic" % "1.1.1" % "runtime",
+      "org.xerial.snappy" % "snappy-java" % "1.1.1-M1" % "runtime",
+      "net.jpountz.lz4" % "lz4" % "1.2.0" % "runtime",
       "org.scalatest" %% "scalatest" % "2.0" % "test",
       "commons-io" % "commons-io" % "2.4" % "test"),
     // make sure that MultiJvm test are compiled by the default test compilation

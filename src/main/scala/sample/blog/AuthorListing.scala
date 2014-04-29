@@ -7,8 +7,7 @@ import akka.actor.PoisonPill
 import akka.actor.ReceiveTimeout
 import akka.contrib.pattern.ShardRegion
 import akka.contrib.pattern.ShardRegion.Passivate
-import akka.persistence.Persistent
-import akka.persistence.Processor
+import akka.persistence.{ConfirmablePersistent, Persistent, Processor}
 import akka.actor.Props
 
 object AuthorListing {
@@ -16,23 +15,26 @@ object AuthorListing {
   def props(): Props = Props(new AuthorListing)
 
   case class PostSummary(author: String, postId: String, title: String)
+
   case class GetPosts(author: String)
+
   case class Posts(list: immutable.IndexedSeq[PostSummary])
 
   val idExtractor: ShardRegion.IdExtractor = {
-    case p @ Persistent(s: PostSummary, _) => (s.author, p)
-    case m: GetPosts                       => (m.author, m)
+    case p@Persistent(s: PostSummary, _) => (s.author, p)
+    case m: GetPosts => (m.author, m)
   }
 
-  val shardResolver: ShardRegion.ShardResolver = msg => msg match {
+  val shardResolver: ShardRegion.ShardResolver = {
     case Persistent(s: PostSummary, _) => (math.abs(s.author.hashCode) % 100).toString
-    case GetPosts(author)              => (math.abs(author.hashCode) % 100).toString
+    case GetPosts(author) => (math.abs(author.hashCode) % 100).toString
   }
 
   val shardName: String = "AuthorListing"
 }
 
 class AuthorListing extends Processor with ActorLogging {
+
   import AuthorListing._
 
   // passivate the entity when no activity
@@ -41,9 +43,11 @@ class AuthorListing extends Processor with ActorLogging {
   var posts = Vector.empty[PostSummary]
 
   def receive = {
-    case Persistent(s: PostSummary, _) =>
+    case p@ConfirmablePersistent(s: PostSummary, _, _) =>
       posts :+= s
+      p.confirm()
       log.info("Post added to {}'s list: {}", s.author, s.title)
+
     case GetPosts(_) =>
       sender() ! Posts(posts)
     case ReceiveTimeout => context.parent ! Passivate(stopMessage = PoisonPill)

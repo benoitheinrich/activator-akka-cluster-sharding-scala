@@ -2,16 +2,16 @@ package sample.blog
 
 import scala.concurrent.duration._
 import com.typesafe.config.ConfigFactory
-import akka.actor.ActorIdentity
-import akka.actor.ActorPath
-import akka.actor.ActorSystem
-import akka.actor.Identify
-import akka.actor.Props
+import akka.actor._
 import akka.contrib.pattern.ClusterSharding
 import akka.pattern.ask
 import akka.persistence.journal.leveldb.SharedLeveldbJournal
 import akka.persistence.journal.leveldb.SharedLeveldbStore
 import akka.util.Timeout
+import akka.cluster.Cluster
+import akka.actor.ActorIdentity
+import scala.Some
+import akka.actor.Identify
 
 object BlogApp {
   def main(args: Array[String]): Unit = {
@@ -22,30 +22,34 @@ object BlogApp {
   }
 
   def startup(ports: Seq[String]): Unit = {
-    ports foreach { port =>
+    ports foreach {
+      port =>
       // Override the configuration of the port
-      val config = ConfigFactory.parseString("akka.remote.netty.tcp.port=" + port).
-        withFallback(ConfigFactory.load())
+        val config = ConfigFactory.parseString("akka.remote.netty.tcp.port=" + port).
+          withFallback(ConfigFactory.load())
 
-      // Create an Akka system
-      val system = ActorSystem("ClusterSystem", config)
+        // Create an Akka system
+        val system = ActorSystem("ClusterSystem", config)
+        Cluster(system).registerOnMemberUp(println(s">>>>>> Cluster is UP!"))
 
-      startupSharedJournal(system, startStore = (port == "2551"), path =
-        ActorPath.fromString("akka.tcp://ClusterSystem@127.0.0.1:2551/user/store"))
+        /*
+              startupSharedJournal(system, startStore = (port == "2551"), path =
+                ActorPath.fromString("akka.tcp://ClusterSystem@127.0.0.1:2551/user/store"))
+        */
 
-      ClusterSharding(system).start(
-        typeName = AuthorListing.shardName,
-        entryProps = Some(AuthorListing.props()),
-        idExtractor = AuthorListing.idExtractor,
-        shardResolver = AuthorListing.shardResolver)
-      ClusterSharding(system).start(
-        typeName = Post.shardName,
-        entryProps = Some(Post.props(ClusterSharding(system).shardRegion(AuthorListing.shardName))),
-        idExtractor = Post.idExtractor,
-        shardResolver = Post.shardResolver)
+        ClusterSharding(system).start(
+          typeName = AuthorListing.shardName,
+          entryProps = Some(AuthorListing.props()),
+          idExtractor = AuthorListing.idExtractor,
+          shardResolver = AuthorListing.shardResolver)
+        ClusterSharding(system).start(
+          typeName = Post.shardName,
+          entryProps = Some(Post.props(ClusterSharding(system).shardRegion(AuthorListing.shardName))),
+          idExtractor = Post.idExtractor,
+          shardResolver = Post.shardResolver)
 
-      if (port != "2551" && port != "2552")
-        system.actorOf(Props[Bot], "bot")
+        if (port != "2551" && port != "2552")
+          system.actorOf(Props[Bot], "bot")
     }
 
     def startupSharedJournal(system: ActorSystem, startStore: Boolean, path: ActorPath): Unit = {
